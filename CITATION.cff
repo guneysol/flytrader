@@ -1,0 +1,46 @@
+cff-version: 1.2.0
+message: "If you use flytrader, please cite it and, more importantly, the connectome and model papers it is built on."
+title: "flytrader: a fruit-fly connectome brain paper-trading memecoins"
+type: software
+license: MIT
+version: 0.1.0
+repository-code: "https://github.com/guneysol/flytrader"
+authors:
+  - name: "Guney"
+references:
+  - type: article
+    title: "A Drosophila computational brain model reveals sensorimotor processing"
+    authors: [{family-names: Shiu, given-names: Philip K.}, {name: "et al."}]
+    journal: Nature
+    year: 2024
+    doi: 10.1038/s41586-024-07763-9
+  - type: article
+    title: "Neuronal wiring diagram of an adult brain"
+    authors: [{family-names: Dorkenwald, given-names: Sven}, {name: "et al."}]
+    journal: Nature
+    year: 2024
+    doi: 10.1038/s41586-024-07558-y
+  - type: article
+    title: "Whole-brain annotation and multi-connectome cell typing of Drosophila"
+    authors: [{family-names: Schlegel, given-names: Philipp}, {name: "et al."}]
+    journal: Nature
+    year: 2024
+    doi: 10.1038/s41586-024-07686-5
+  - type: article
+    title: "Neuronal parts list and wiring diagram for a visual system"
+    authors: [{family-names: Matsliah, given-names: Arie}, {name: "et al."}]
+    journal: Nature
+    year: 2024
+    doi: 10.1038/s41586-024-07981-1
+  - type: article
+    title: "Sexual dimorphism in the complete Drosophila male central nervous system connectome"
+    authors: [{family-names: Berg, given-names: Stuart}, {name: "et al."}]
+    journal: Cell
+    year: 2026
+    doi: 10.1016/j.cell.2026.08.015
+  - type: article
+    title: "The complete gustatory connectome of adult Drosophila reveals how taste guides feeding, foraging, and social behavior"
+    authors: [{family-names: Tastekin, given-names: Ibrahim}, {name: "et al."}]
+    journal: Cell
+    year: 2026
+    doi: 10.1016/j.cell.2026.08.016

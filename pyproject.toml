@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flytrader"
+version = "0.1.0"
+description = "A FlyWire fruit-fly connectome brain paper-trading Solana memecoins on real Helius swap data."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.1",
+    "scipy>=1.14",
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "requests>=2.32",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+video = ["playwright>=1.48"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+flytrader = "flytrader.__main__:main"
+
+[tool.setuptools]
+packages = ["flytrader"]
+
+[tool.setuptools.package-data]
+flytrader = ["report.html"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["data", "out"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E741"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["data: needs the connectome download (scripts/setup_data.py)"]

@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fly Brain Trader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#05060a; --fg:#e9ecf5; --muted:#7d8499; --line:#1b1f2c; --panel:rgba(12,14,22,.78);
+          --buy:#3ddc84; --sell:#ff4d6d; --sugar:#3ddc84; --bitter:#ff4d6d; --loom:#3fd0ff; --mn9:#ffb020; --gf:#ff3df2; --kc:#a77bff; --price:#e9ecf5; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font-family:'JetBrains Mono', ui-monospace, monospace; overflow:hidden; }
+  #stage { position:fixed; inset:0; display:grid; grid-template-columns: 58fr 42fr; grid-template-rows: 100%; }
+  #brain { position:relative; overflow:hidden; min-height:0; }
+  #brain canvas { position:absolute; inset:0; display:block; width:100%; height:100%; }
+  #side { display:flex; flex-direction:column; padding:22px 22px 18px 6px; gap:12px; min-width:0; min-height:0; }
+  .title { font-weight:800; font-size:22px; letter-spacing:.5px; }
+  .title small { display:block; font-weight:400; color:var(--muted); font-size:12px; margin-top:4px; letter-spacing:0; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  #chart { position:absolute; inset:12px; width:calc(100% - 24px); height:calc(100% - 24px); display:block; }
+  .chartwrap { flex:1; min-height:160px; position:relative; }
+  .row { display:grid; grid-template-columns: 92px 1fr 58px; align-items:center; gap:10px; font-size:12px; margin:5px 0; }
+  .bar { height:9px; background:#141824; border-radius:5px; overflow:hidden; }
+  .bar > i { display:block; height:100%; width:0; border-radius:5px; transition: width .08s linear; }
+  .val { text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .stats { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
+  .stat .k { color:var(--muted); font-size:11px; } .stat .v { font-size:20px; font-weight:800; font-variant-numeric:tabular-nums; }
+  #caption { position:absolute; left:50%; bottom:40px; transform:translateX(-50%); padding:12px 20px; border-radius:12px;
+             font-weight:800; font-size:24px; letter-spacing:.5px; white-space:nowrap; opacity:0; transition:opacity .25s;
+             background:rgba(5,6,10,.7); border:1px solid var(--line); }
+  #caption small { display:block; font-size:13px; font-weight:400; color:var(--muted); margin-top:4px; text-align:center; }
+  #clock { position:absolute; left:22px; top:20px; font-size:13px; color:var(--muted); }
+  #legend { position:absolute; left:22px; top:44px; font-size:11px; color:var(--muted); line-height:1.7; }
+  #legend b { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+  .label { position:absolute; font-size:11px; font-weight:600; pointer-events:none; white-space:nowrap; transform:translate(10px,-50%);
+           padding:2px 6px; border-radius:6px; background:rgba(5,6,10,.55); transition:opacity .2s; }
+  #endcard { position:absolute; inset:0; display:grid; place-items:center; background:rgba(5,6,10,.82); opacity:0; transition:opacity .6s; pointer-events:none; text-align:center; }
+  #endcard h2 { font-size:44px; margin:0 0 18px; } #endcard .big { font-size:30px; line-height:1.6; } #endcard small { display:block; color:var(--muted); font-size:14px; margin-top:22px; }
+  #loading { position:fixed; inset:0; display:grid; place-items:center; color:var(--muted); font-size:14px; background:var(--bg); z-index:9; }
+  #controls { position:absolute; right:12px; top:14px; display:flex; gap:6px; }
+  #controls button { font:inherit; font-size:12px; color:var(--fg); background:#11141d; border:1px solid var(--line); border-radius:8px; padding:6px 10px; cursor:pointer; }
+  body.rec #controls { display:none; }
+  @media (max-width: 800px) {
+    #stage { grid-template-columns: 1fr; grid-template-rows: 55vh auto; overflow:auto; position:static; }
+    html, body { overflow:auto; } #side { padding:12px 16px; } #caption { font-size:16px; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="loading">loading 138,639 neurons…</div>
+<div id="stage">
+  <div id="brain">
+    <div id="clock"></div>
+    <div id="controls"><button id="play">⏸ pause</button><button id="slower">−</button><button id="faster">+</button></div>
+    <div id="labels"></div>
+    <div id="caption"></div>
+    <div id="endcard"></div>
+    <div id="legend">
+      <div><b style="background:var(--sugar)"></b>sugar taste neurons → buy pressure</div>
+      <div><b style="background:var(--bitter)"></b>bitter taste neurons → sell pressure</div>
+      <div><b style="background:var(--loom)"></b>looming detectors → crash incoming</div>
+      <div><b style="background:var(--kc)"></b>mushroom body → learned market smell</div>
+      <div><b style="background:var(--mn9)"></b>MN9 proboscis → BUY · <b style="background:var(--gf)"></b>giant fiber → SELL</div>
+    </div>
+  </div>
+  <div id="side">
+    <div class="title" id="title">🪰 FLY BRAIN TRADER<small id="subtitle"></small></div>
+    <div class="panel chartwrap"><canvas id="chart"></canvas></div>
+    <div class="panel" id="senses"></div>
+    <div class="panel stats" id="stats"></div>
+  </div>
+</div>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+
+const params = new URLSearchParams(location.search);
+const EP = params.get("episode") || "episode";
+const REC = params.has("record");
+if (REC) document.body.classList.add("rec");
+const FRAMES_PER_BAR = +(params.get("fpb") || 14);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+const bin = async (u, T) => new T(await (await fetch(u)).arrayBuffer());
+const [pos, cls, shellV, shellF, labels, ep, spk] = await Promise.all([
+  bin("assets/neurons.bin", Float32Array), bin("assets/class.bin", Uint8Array),
+  bin("assets/shell_verts.bin", Float32Array), bin("assets/shell_faces.bin", Uint32Array),
+  fetch("assets/labels.json").then(r => r.json()), fetch(`${EP}.json`).then(r => r.json()),
+  bin(`${EP}_spikes.bin`, Uint32Array),
+]);
+const N = labels.n;
+
+// ---------- scene ----------
+const host = document.getElementById("brain");
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: REC });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+host.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(css("--bg"));
+const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 50);
+camera.position.set(0, 0.15, 2.3);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.autoRotate = !REC; controls.autoRotateSpeed = 0.35;
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.85, 0.35, 0.4);
+composer.addPass(bloom);
+
+// neuron colors by super_class (dim) and per-group "hot" colors
+const base = [[0.16,0.20,0.36],[0.28,0.26,0.42],[0.20,0.32,0.30],[0.18,0.24,0.40],[0.30,0.24,0.22],
+              [0.36,0.22,0.30],[0.24,0.30,0.26],[0.20,0.22,0.36],[0.42,0.30,0.20],[0.30,0.30,0.18]];
+const hex = h => new THREE.Color(css(h));
+const groupHot = { sugar: hex("--sugar"), bitter: hex("--bitter"), looming: hex("--loom"), giant_fiber: hex("--gf"),
+                   mn9: hex("--mn9"), mdn: hex("--gf"), kenyon: hex("--kc"), mbon: hex("--kc"), dan: hex("--mn9") };
+const col = new Float32Array(N * 3), hot = new Float32Array(N * 3), size = new Float32Array(N), act = new Float32Array(N);
+for (let i = 0; i < N; i++) {
+  const b = base[cls[i]] || [0.12, 0.12, 0.16];
+  col.set(b, i * 3); hot.set([1.0, 0.92, 0.75], i * 3); size[i] = 1;
+}
+for (const [g, idx] of Object.entries(labels.groups)) {
+  const c = groupHot[g]; if (!c) continue;
+  for (const i of idx) { hot.set([c.r, c.g, c.b], i * 3); col.set([c.r * .35, c.g * .35, c.b * .35], i * 3); size[i] = g === "kenyon" ? 1.2 : 1.8; }
+}
+for (const g of ["mn9", "giant_fiber", "mdn"]) for (const i of labels.groups[g]) size[i] = 9;
+const geo = new THREE.BufferGeometry();
+geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+geo.setAttribute("hot", new THREE.BufferAttribute(hot, 3));
+geo.setAttribute("size", new THREE.BufferAttribute(size, 1));
+const actAttr = new THREE.BufferAttribute(act, 1); actAttr.setUsage(THREE.DynamicDrawUsage);
+geo.setAttribute("act", actAttr);
+const mat = new THREE.ShaderMaterial({
+  uniforms: { scale: { value: 1 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: `attribute vec3 color; attribute vec3 hot; attribute float size; attribute float act;
+    uniform float scale; varying vec3 vCol; varying float vA;
+    void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0);
+      vCol = mix(color*0.22, hot*1.5, clamp(act,0.0,1.0)); vA = 0.10 + 0.75*clamp(act,0.0,1.0);
+      gl_PointSize = scale * size * (0.9 + 2.2*act) / -mv.z; gl_Position = projectionMatrix * mv; }`,
+  fragmentShader: `varying vec3 vCol; varying float vA;
+    void main(){ vec2 d = gl_PointCoord-0.5; float r = dot(d,d); if (r>0.25) discard;
+      gl_FragColor = vec4(vCol, vA * smoothstep(0.25, 0.0, r)); }`,
+});
+scene.add(new THREE.Points(geo, mat));
+
+// translucent brain shell with a fresnel rim
+const nV = new Uint32Array(shellV.buffer, 0, 1)[0];
+const sgeo = new THREE.BufferGeometry();
+sgeo.setAttribute("position", new THREE.BufferAttribute(shellV.subarray(2, 2 + nV * 3), 3));
+sgeo.setIndex(new THREE.BufferAttribute(shellF, 1)); sgeo.computeVertexNormals();
+scene.add(new THREE.Mesh(sgeo, new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+  vertexShader: `varying float f; void main(){ vec3 n = normalize(normalMatrix*normal); vec4 mv = modelViewMatrix*vec4(position,1.);
+    f = pow(1.0-abs(dot(n, normalize(-mv.xyz))), 3.0); gl_Position = projectionMatrix*mv; }`,
+  fragmentShader: `varying float f; void main(){ gl_FragColor = vec4(vec3(0.35,0.45,0.85)*f, f*0.22); }`,
+})));
+
+// ---------- labels for key circuits ----------
+const centroid = idx => { const v = new THREE.Vector3(); for (const i of idx) v.add(new THREE.Vector3(pos[i*3], pos[i*3+1], pos[i*3+2])); return v.divideScalar(idx.length); };
+const tags = [["sugar", "SUGAR GRNs", "--sugar"], ["bitter", "BITTER GRNs", "--bitter"], ["mn9", "MN9 · proboscis", "--mn9"],
+              ["giant_fiber", "GIANT FIBER · escape", "--gf"], ["kenyon", "MUSHROOM BODY", "--kc"], ["looming", "LOOMING · LC4/LPLC2", "--loom"]]
+  .map(([g, text, c]) => { const el = document.createElement("div"); el.className = "label"; el.textContent = text; el.style.color = css(c);
+    document.getElementById("labels").appendChild(el); return { g, el, p: centroid(labels.groups[g]), glow: 0 }; });
+
+// ---------- episode data ----------
+const bars = ep.bars, B = bars.length, simFrames = ep.sim_frames;
+const END = Math.min(B - 1, +(params.get("end") || B - 1));   // clip end bar (end card shows here)   // sim_frames[key] = [offsets...]
+const keyFrames = k => { const o = simFrames[k]; if (!o) return []; const out = [];
+  for (let j = 0; j + 1 < o.length; j++) out.push(spk.subarray(o[j], o[j + 1])); return out; };
+const kcIdx = labels.groups.kenyon;
+const trades = ep.trades;
+document.getElementById("subtitle").textContent = ep.subtitle;
+
+// ---------- side panel ----------
+const senses = document.getElementById("senses");
+const meters = [["sugar", "SUGAR", "--sugar", 200, "Hz"], ["bitter", "BITTER", "--bitter", 200, "Hz"], ["loom", "LOOMING", "--loom", 200, "Hz"],
+                ["mn9", "MN9 FEED", "--mn9", 100, "Hz"], ["gf", "GIANT FIBER", "--gf", 250, "Hz"], ["valence", "SMELL MEMORY", "--kc", 1, ""],
+                ["hunger", "HUNGER", "--mn9", 1, ""]]
+  .map(([k, name, c, max, unit]) => { const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<span>${name}</span><div class="bar"><i style="background:${css(c)}"></i></div><span class="val"></span>`;
+    senses.appendChild(row); return { k, max, unit, fill: row.querySelector("i"), val: row.querySelector(".val") }; });
+const stats = document.getElementById("stats");
+const chart = document.getElementById("chart"), cx = chart.getContext("2d");
+
+function drawChart(bi, sub) {
+  const r = chart.getBoundingClientRect(), dpr = Math.min(devicePixelRatio, 2);
+  chart.width = r.width * dpr; chart.height = r.height * dpr; cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = r.width, H = r.height, win = Math.min(B, 180), s = Math.max(0, Math.min(bi - Math.floor(win * 0.75), B - win));
+  const seg = bars.slice(s, Math.max(bi + 1, s + 30)), lo = Math.min(...seg.map(b => b.c)) * 0.98, hi = Math.max(...seg.map(b => b.c)) * 1.02;
+  const X = i => 8 + (i - s) / (win - 1) * (W - 16), Y = p => H - 18 - (Math.log(p) - Math.log(lo)) / (Math.log(hi) - Math.log(lo) || 1) * (H - 40);
+  cx.strokeStyle = "#1b1f2c"; cx.lineWidth = 1;
+  for (let g = 0; g < 4; g++) { const y = 14 + g * (H - 32) / 3; cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke(); }
+  // shade when fly is holding
+  cx.fillStyle = "rgba(61,220,132,.07)";
+  for (let i = s; i <= Math.min(bi, s + win - 1); i++) if (bars[i].p) cx.fillRect(X(i) - (W / win) / 2, 0, W / win + 0.5, H);
+  cx.strokeStyle = css("--price"); cx.lineWidth = 1.6; cx.beginPath();
+  for (let i = s; i <= Math.min(bi, s + win - 1); i++) { const x = X(i) + (i === bi ? (sub - 1) * (W / win) : 0); i === s ? cx.moveTo(x, Y(bars[i].c)) : cx.lineTo(X(i), Y(bars[i].c)); }
+  cx.stroke();
+  for (const t of trades) { if (t.i < s || t.i > bi) continue;
+    const x = X(t.i), y = Y(t.price), buy = t.side === "buy";
+    cx.fillStyle = buy ? css("--buy") : css("--sell"); cx.beginPath();
+    if (buy) { cx.moveTo(x, y + 4); cx.lineTo(x - 6, y + 14); cx.lineTo(x + 6, y + 14); } else { cx.moveTo(x, y - 4); cx.lineTo(x - 6, y - 14); cx.lineTo(x + 6, y - 14); }
+    cx.fill();
+    if (!buy && t.ret != null) { cx.font = "600 11px JetBrains Mono"; cx.fillText((t.ret >= 0 ? "+" : "") + (t.ret * 100).toFixed(1) + "%", x + 8, y - 8); } }
+  const cb = bars[bi]; cx.fillStyle = css("--price"); cx.beginPath(); cx.arc(X(bi), Y(cb.c), 3.5, 0, 7); cx.fill();
+  cx.font = "600 12px JetBrains Mono"; cx.fillStyle = css("--muted"); cx.fillText(`${ep.symbol}  $${fmt(cb.c)}`, 10, 16);
+}
+const fmt = p => p >= 1 ? p.toFixed(3) : p.toPrecision(4);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// ---------- playback ----------
+let gframe = 0, barIdx = 0, sub = 0, playing = true, speed = 1, caption = { t: 0 }, focus = 0;
+const totalFrames = B * FRAMES_PER_BAR;
+let frames = [], kcActive = null;
+
+function enterBar(i) {
+  const b = bars[i];
+  frames = keyFrames(b.k);
+  kcActive = ep.kc[i] || [];
+  for (const j of kcActive) act[j] = Math.max(act[j], 0.55);
+  const tr = trades.find(t => (t.d ?? t.i) === i);
+  if (tr) {
+    const buy = tr.side === "buy";
+    const why = tr.reason || "";
+    const head = buy ? "🍬 SUGAR → MN9 PROBOSCIS → <span style='color:var(--buy)'>BUY</span>"
+      : why.startsWith("giant") ? "💨 GIANT FIBER ESCAPE → <span style='color:var(--sell)'>SELL</span>"
+      : why.startsWith("tastes") ? "🤮 BITTER → SPIT IT OUT → <span style='color:var(--sell)'>SELL</span>"
+      : why.startsWith("patch") ? "🪰 PATCH DEPLETED → FLEW OFF → <span style='color:var(--sell)'>SELL</span>"
+      : why.startsWith("moon") ? "🌙 MOONWALKER NEURONS → <span style='color:var(--sell)'>SELL</span>"
+      : `<span style='color:var(--sell)'>SELL</span>`;
+    const tail = buy ? `@ $${fmt(tr.price)}` : `@ $${fmt(tr.price)} · ${(tr.ret >= 0 ? "+" : "") + (tr.ret * 100).toFixed(2)}%`;
+    const el = document.getElementById("caption"); el.innerHTML = `${head}<small>${tail}</small>`; el.style.opacity = 1;
+    caption.t = FRAMES_PER_BAR * 3; focus = 1;
+    for (const tg of tags) if ((buy && ["sugar", "mn9"].includes(tg.g)) || (!buy && ["giant_fiber", "looming", "bitter"].includes(tg.g))) tg.glow = 1;
+  }
+  // side panel
+  const m = { sugar: b.s, bitter: b.b, loom: b.l, mn9: b.m, gf: b.g, valence: b.v, hunger: b.h };
+  for (const mt of meters) { const v = m[mt.k]; const w = mt.k === "valence" ? Math.abs(v) * 50 + "%" : Math.min(100, v / mt.max * 100) + "%";
+    mt.fill.style.width = w; mt.fill.style.marginLeft = mt.k === "valence" ? (v < 0 ? 50 - Math.abs(v) * 50 : 50) + "%" : 0;
+    mt.val.textContent = mt.unit ? Math.round(v) + mt.unit : (v >= 0 && mt.k === "valence" ? "+" : "") + v.toFixed(2); }
+  const done = trades.filter(t => t.side === "sell" && t.i <= i);
+  const pnl = done.reduce((a, t) => a + t.pnl, 0), wins = done.filter(t => t.ret > 0).length;
+  stats.innerHTML = [["FLY PnL", (pnl >= 0 ? "+$" : "-$") + Math.abs(pnl).toFixed(2), pnl >= 0 ? "--buy" : "--sell"],
+    ["TRADES", `${done.length} · ${done.length ? Math.round(wins / done.length * 100) : 0}% win`, ""],
+    [ep.compare_label, ep.compare_value, "--mn9"]]
+    .map(([k, v, c]) => `<div class="stat"><div class="k">${k}</div><div class="v" style="${c ? `color:var(${c})` : ""}">${esc(v)}</div></div>`).join("");
+  document.getElementById("clock").textContent = `${b.t} UTC · ${b.r}`;
+}
+
+function showEnd(on) {
+  const el = document.getElementById("endcard"), st = ep.stats || {};
+  if (on && !el.innerHTML) el.innerHTML = `<div><h2>🪰 1 fruit fly brain vs ${(st.humans || 0).toLocaleString()} humans</h2>
+    <div class="big">fly: <b style="color:var(${st.fly_roi >= 0 ? "--buy" : "--sell"})">${(st.fly_roi >= 0 ? "+" : "") + (st.fly_roi * 100).toFixed(1)}%</b>
+    &nbsp;·&nbsp; median human: <b style="color:var(--sell)">${(st.human_median_roi * 100).toFixed(1)}%</b><br>
+    the fly beat <b style="color:var(--mn9)">${Math.round(st.beat_humans * 100)}%</b> of human traders</div>
+    <small>${esc(ep.subtitle)} · paper trading, fees included · return on capital deployed</small></div>`;
+  el.style.opacity = on ? 1 : 0;
+}
+
+function step() {
+  if (sub === 0) enterBar(barIdx);
+  showEnd(barIdx >= END && ep.stats);
+  // decay, then light up this frame's spikes
+  for (let i = 0; i < N; i++) if (act[i] > 0.002) act[i] *= 0.82; else act[i] = 0;
+  if (frames.length) {
+    // replay the bar's brain simulation over the first 70% of the bar, slowed down
+    const L = FRAMES_PER_BAR * 0.7, k = frames.length;
+    const f0 = Math.floor(sub * k / L), f1 = Math.min(k, Math.floor((sub + 1) * k / L));
+    for (let f = f0; f < f1; f++) for (const n of frames[f]) act[n] = 1;
+  }
+  actAttr.needsUpdate = true;
+  drawChart(barIdx, sub / FRAMES_PER_BAR);
+  if (caption.t > 0 && --caption.t === 0) document.getElementById("caption").style.opacity = 0;
+  gframe++;
+  sub++; if (sub >= FRAMES_PER_BAR) { sub = 0; if (!REC || barIdx < END) barIdx = barIdx >= END ? 0 : barIdx + 1; else sub = FRAMES_PER_BAR - 1; }
+}
+
+function resize() {
+  const w = host.clientWidth, h = host.clientHeight;
+  renderer.setSize(w, h, false); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+  mat.uniforms.scale.value = h * renderer.getPixelRatio() * 0.012;
+}
+addEventListener("resize", resize); resize();
+
+const tmp = new THREE.Vector3();
+function draw() {
+  focus *= 0.97;
+  if (REC) { const a = barIdx * 0.004 + sub * 0.004 / FRAMES_PER_BAR; camera.position.set(Math.sin(a) * 2.3, 0.15, Math.cos(a) * 2.3); camera.lookAt(0, 0, 0); }
+  controls.update();
+  composer.render();
+  const w = host.clientWidth, h = host.clientHeight;
+  for (const tg of tags) { tmp.copy(tg.p).project(camera); tg.glow *= 0.96;
+    tg.el.style.left = ((tmp.x + 1) / 2 * w) + "px"; tg.el.style.top = ((1 - tmp.y) / 2 * h) + "px";
+    tg.el.style.opacity = 0.45 + 0.55 * tg.glow; }
+}
+
+// deterministic frame hook for video capture: renderFrame(i) advances to global frame i
+window.renderFrame = i => { while (gframe < i) step(); draw(); return gframe; };
+window.totalFrames = totalFrames;
+if (params.get("from")) { const f = +params.get("from"); barIdx = Math.max(0, Math.min(B - 1, f)); gframe = barIdx * FRAMES_PER_BAR; }
+document.getElementById("loading").remove();
+
+let acc = 0, last = performance.now();
+function loop(now) {
+  const dt = now - last; last = now;
+  if (playing) { acc += dt * speed; while (acc > 1000 / 30) { step(); acc -= 1000 / 30; } }
+  draw(); requestAnimationFrame(loop);
+}
+if (!REC) requestAnimationFrame(loop); else { enterBar(barIdx); draw(); window.ready = true; }
+document.getElementById("play").onclick = e => { playing = !playing; e.target.textContent = playing ? "⏸ pause" : "▶ play"; };
+document.getElementById("faster").onclick = () => speed = Math.min(8, speed * 2);
+document.getElementById("slower").onclick = () => speed = Math.max(0.25, speed / 2);
+</script>
+</body>
+</html>
