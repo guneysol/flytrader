@@ -21,6 +21,7 @@ def main():
     ap.add_argument("--from-bar", type=int, default=0)
     ap.add_argument("--bars", type=int, default=60)
     ap.add_argument("--fpb", type=int, default=14, help="video frames per market minute")
+    ap.add_argument("--slow", default="", help="per-bar speed overrides, e.g. 772-790:10,791-812:6")
     ap.add_argument("--width", type=int, default=1920)
     ap.add_argument("--height", type=int, default=1080)
     ap.add_argument("--out", default="out/flytrader.mp4")
@@ -28,18 +29,21 @@ def main():
     a = ap.parse_args()
 
     tmp = Path(tempfile.mkdtemp(prefix="flyframes_"))
-    n = a.bars * a.fpb + int(a.hold * 30)
+    spans = [(int(x.split(":")[0].split("-")[0]), int(x.split(":")[0].split("-")[1]), int(x.split(":")[1]))
+             for x in a.slow.split(",") if x]
+    fpb_at = lambda i: next((f for lo, hi, f in spans if lo <= i <= hi), a.fpb)  # noqa: E731
+    n = sum(fpb_at(i) for i in range(a.from_bar, a.from_bar + a.bars)) + int(a.hold * 30)
     with sync_playwright() as p:
         exe = next(Path.home().glob("Library/Caches/ms-playwright/chromium-*/chrome-mac*/*.app/Contents/MacOS/*"), None)
         browser = p.chromium.launch(executable_path=str(exe) if exe else None, headless=True,
                                     args=["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"])
         page = browser.new_page(viewport={"width": a.width, "height": a.height}, device_scale_factor=1)
-        page.goto(f"{a.url}?episode={a.episode}&record=1&fpb={a.fpb}&from={a.from_bar}&end={a.from_bar + a.bars - 1}")
+        page.goto(f"{a.url}?episode={a.episode}&record=1&fpb={a.fpb}&slow={a.slow}"
+                  f"&from={a.from_bar}&end={a.from_bar + a.bars - 1}")
         page.wait_for_function("window.ready === true", timeout=120_000)
         page.evaluate("document.fonts.ready")
-        start = a.from_bar * a.fpb
         for i in range(n):
-            page.evaluate(f"window.renderFrame({start + i})")
+            page.evaluate(f"window.renderFrame({i})")
             page.screenshot(path=str(tmp / f"f{i:05d}.png"))
             if i % 100 == 0:
                 print(f"  frame {i}/{n}", flush=True)

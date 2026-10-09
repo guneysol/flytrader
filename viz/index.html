@@ -96,6 +96,9 @@ const EP = params.get("episode") || "episode";
 const REC = params.has("record");
 if (REC) document.body.classList.add("rec");
 const FRAMES_PER_BAR = +(params.get("fpb") || 14);
+// variable speed: ?slow=772-790:10,791-812:6 gives those bars more frames (slow motion), the rest get fpb
+const SPEED = (params.get("slow") || "").split(",").filter(Boolean).map(r => { const [span, f] = r.split(":"); const [a, b] = span.split("-").map(Number); return { a, b, f: +f }; });
+const fpbAt = i => (SPEED.find(r => i >= r.a && i <= r.b) || { f: FRAMES_PER_BAR }).f;
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 const bin = async (u, T) => new T(await (await fetch(u)).arrayBuffer());
@@ -287,7 +290,7 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;"
 
 // ---------- playback ----------
 let gframe = 0, barIdx = 0, sub = 0, playing = true, speed = 1, caption = { t: 0 }, focus = 0;
-const totalFrames = B * FRAMES_PER_BAR;
+
 let frames = [], kcActive = null;
 
 function enterBar(i) {
@@ -307,7 +310,7 @@ function enterBar(i) {
       : `<span style='color:var(--sell)'>SELL</span>`;
     const tail = buy ? `@ $${fmt(tr.price)}` : `@ $${fmt(tr.price)} · ${(tr.ret >= 0 ? "+" : "") + (tr.ret * 100).toFixed(2)}%`;
     const el = document.getElementById("caption"); el.innerHTML = `${head}<small>${tail}</small>`; el.style.opacity = 1;
-    caption.t = FRAMES_PER_BAR * 3; focus = 1;
+    caption.t = 45; focus = 1;   // ~1.5 s on screen
     for (const tg of tags) if ((buy && ["sugar", "mn9"].includes(tg.g)) || (!buy && ["giant_fiber", "looming", "bitter"].includes(tg.g))) tg.glow = 1;
   }
   // side panel
@@ -345,16 +348,16 @@ function step() {
   for (let i = 0; i < N; i++) if (act[i] > 0.002) act[i] *= 0.82; else act[i] = 0;
   if (frames.length) {
     // replay the bar's brain simulation over the first 70% of the bar, slowed down
-    const L = FRAMES_PER_BAR * 0.7, k = frames.length;
+    const L = fpbAt(barIdx) * 0.7, k = frames.length;
     const f0 = Math.floor(sub * k / L), f1 = Math.min(k, Math.floor((sub + 1) * k / L));
     for (let f = f0; f < f1; f++) for (const n of frames[f]) act[n] = 1;
   }
   actAttr.needsUpdate = true;
-  drawChart(barIdx, sub / FRAMES_PER_BAR);
-  drawPosition(barIdx, sub / FRAMES_PER_BAR);
+  drawChart(barIdx, sub / fpbAt(barIdx));
+  drawPosition(barIdx, sub / fpbAt(barIdx));
   if (caption.t > 0 && --caption.t === 0) document.getElementById("caption").style.opacity = 0;
   gframe++;
-  sub++; if (sub >= FRAMES_PER_BAR) { sub = 0; if (!REC || barIdx < END) barIdx = barIdx >= END ? 0 : barIdx + 1; else sub = FRAMES_PER_BAR - 1; }
+  sub++; if (sub >= fpbAt(barIdx)) { sub = 0; if (!REC || barIdx < END) barIdx = barIdx >= END ? 0 : barIdx + 1; else sub = fpbAt(barIdx) - 1; }
 }
 
 function resize() {
@@ -367,7 +370,7 @@ addEventListener("resize", resize); resize();
 const tmp = new THREE.Vector3();
 function draw() {
   focus *= 0.97;
-  if (REC) { const a = barIdx * 0.004 + sub * 0.004 / FRAMES_PER_BAR; camera.position.set(Math.sin(a) * 2.3, 0.15, Math.cos(a) * 2.3); camera.lookAt(0, 0, 0); }
+  if (REC) { const a = gframe * 0.0006; camera.position.set(Math.sin(a) * 2.3, 0.15, Math.cos(a) * 2.3); camera.lookAt(0, 0, 0); }
   controls.update();
   composer.render();
   const w = host.clientWidth, h = host.clientHeight;
@@ -377,9 +380,9 @@ function draw() {
 }
 
 // deterministic frame hook for video capture: renderFrame(i) advances to global frame i
+// renderFrame(i): advance to frame i of the clip (0 = the first frame of the `from` bar)
 window.renderFrame = i => { while (gframe < i) step(); draw(); return gframe; };
-window.totalFrames = totalFrames;
-if (params.get("from")) { const f = +params.get("from"); barIdx = Math.max(0, Math.min(B - 1, f)); gframe = barIdx * FRAMES_PER_BAR; }
+if (params.get("from")) { const f = +params.get("from"); barIdx = Math.max(0, Math.min(B - 1, f)); }
 document.getElementById("loading").remove();
 
 let acc = 0, last = performance.now();
