@@ -23,6 +23,10 @@
   .bar { height:9px; background:#141824; border-radius:5px; overflow:hidden; }
   .bar > i { display:block; height:100%; width:0; border-radius:5px; transition: width .08s linear; }
   .val { text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
+  #position { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  #position .what { font-size:13px; color:var(--muted); line-height:1.5; }
+  #position .what b { color:var(--fg); font-size:15px; }
+  #position .pct { font-size:34px; font-weight:800; font-variant-numeric:tabular-nums; }
   .stats { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
   .stat .k { color:var(--muted); font-size:11px; } .stat .v { font-size:20px; font-weight:800; font-variant-numeric:tabular-nums; }
   #caption { position:absolute; left:50%; bottom:40px; transform:translateX(-50%); padding:12px 20px; border-radius:12px;
@@ -72,6 +76,7 @@
   <div id="side">
     <div class="title" id="title">🪰 FLY BRAIN TRADER<small id="subtitle"></small></div>
     <div class="panel chartwrap"><canvas id="chart"></canvas></div>
+    <div class="panel" id="position"></div>
     <div class="panel" id="senses"></div>
     <div class="panel stats" id="stats"></div>
   </div>
@@ -172,7 +177,7 @@ const tags = [["sugar", "SUGAR GRNs", "--sugar"], ["bitter", "BITTER GRNs", "--b
 
 // ---------- episode data ----------
 const bars = ep.bars, B = bars.length, simFrames = ep.sim_frames;
-const END = Math.min(B - 1, +(params.get("end") || B - 1));   // clip end bar (end card shows here)   // sim_frames[key] = [offsets...]
+const END = Math.min(B - 1, +(params.get("end") || B - 1));   // clip end bar (end card shows here)
 const keyFrames = k => { const o = simFrames[k]; if (!o) return []; const out = [];
   for (let j = 0; j + 1 < o.length; j++) out.push(spk.subarray(o[j], o[j + 1])); return out; };
 const kcIdx = labels.groups.kenyon;
@@ -190,28 +195,89 @@ const meters = [["sugar", "SUGAR", "--sugar", 200, "Hz"], ["bitter", "BITTER", "
 const stats = document.getElementById("stats");
 const chart = document.getElementById("chart"), cx = chart.getContext("2d");
 
+// ---------- clip accounting (everything is counted from the start of what's on screen) ----------
+const START = +(params.get("from") || 0);
+const FEE = ep.fee ?? 0, BANK = +(params.get("bank") || 1000);   // starting balance, all-in per trade, compounding
+const money = x => "$" + x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fills = trades.map(t => ({ ...t, at: t.i }));                 // bar where the order filled
+const priceAt = (i, frac) => { const p0 = bars[Math.max(i - 1, 0)].c, p1 = bars[i].c; return p0 + (p1 - p0) * frac; };
+function position(i) {                                              // open position at bar i (after fills)
+  let open = null;
+  for (const t of fills) { if (t.at > i) break; open = t.side === "buy" ? t : null; }
+  if (open && open.at < START) open = { ...open, price: bars[START].c, at: START };  // carried in: mark from clip start
+  return open;
+}
+const netRet = (entry, px) => px / entry * (1 - FEE) ** 2 - 1;
+function clipPnl(i, frac) {
+  let bank = BANK, n = 0, wins = 0;
+  for (const t of fills) if (t.side === "sell" && t.at >= START && t.at <= i) { bank *= 1 + t.ret; n++; if (t.ret > 0) wins++; }
+  const open = position(i);
+  const live = open ? netRet(open.price, priceAt(i, frac)) : null;
+  const balance = bank * (1 + (live ?? 0));
+  return { stake: bank, balance, ret: balance / BANK - 1, n, wins, open, live };
+}
+
 function drawChart(bi, sub) {
   const r = chart.getBoundingClientRect(), dpr = Math.min(devicePixelRatio, 2);
   chart.width = r.width * dpr; chart.height = r.height * dpr; cx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const W = r.width, H = r.height, win = Math.min(B, 180), s = Math.max(0, Math.min(bi - Math.floor(win * 0.75), B - win));
-  const seg = bars.slice(s, Math.max(bi + 1, s + 30)), lo = Math.min(...seg.map(b => b.c)) * 0.98, hi = Math.max(...seg.map(b => b.c)) * 1.02;
-  const X = i => 8 + (i - s) / (win - 1) * (W - 16), Y = p => H - 18 - (Math.log(p) - Math.log(lo)) / (Math.log(hi) - Math.log(lo) || 1) * (H - 40);
+  const W = r.width, H = r.height, win = Math.min(B, 120), s = Math.max(0, Math.min(bi - Math.floor(win * 0.8), B - win));
+  const last = Math.min(bi, s + win - 1);
+  const seg = bars.slice(s, Math.max(last + 1, s + 20));
+  const lo = Math.min(...seg.map(b => b.lo ?? b.c)) * 0.985, hi = Math.max(...seg.map(b => b.hi ?? b.c)) * 1.015;
+  const bw = (W - 16) / win, X = i => 8 + (i - s + 0.5) * bw;
+  const Y = p => H - 22 - (Math.log(p) - Math.log(lo)) / (Math.log(hi) - Math.log(lo) || 1) * (H - 50);
   cx.strokeStyle = "#1b1f2c"; cx.lineWidth = 1;
-  for (let g = 0; g < 4; g++) { const y = 14 + g * (H - 32) / 3; cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke(); }
-  // shade when fly is holding
-  cx.fillStyle = "rgba(61,220,132,.07)";
-  for (let i = s; i <= Math.min(bi, s + win - 1); i++) if (bars[i].p) cx.fillRect(X(i) - (W / win) / 2, 0, W / win + 0.5, H);
-  cx.strokeStyle = css("--price"); cx.lineWidth = 1.6; cx.beginPath();
-  for (let i = s; i <= Math.min(bi, s + win - 1); i++) { const x = X(i) + (i === bi ? (sub - 1) * (W / win) : 0); i === s ? cx.moveTo(x, Y(bars[i].c)) : cx.lineTo(X(i), Y(bars[i].c)); }
-  cx.stroke();
-  for (const t of trades) { if (t.i < s || t.i > bi) continue;
-    const x = X(t.i), y = Y(t.price), buy = t.side === "buy";
+  for (let g = 0; g < 4; g++) { const y = 26 + g * (H - 50) / 3; cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke(); }
+  // holding band
+  for (let i = s; i <= last; i++) if (position(i)) { cx.fillStyle = "rgba(61,220,132,.08)"; cx.fillRect(X(i) - bw / 2, 0, bw + 0.5, H); }
+  // candles (the current one grows during the bar)
+  for (let i = s; i <= last; i++) {
+    const b = bars[i], o = b.o ?? b.c, c = i === bi ? priceAt(i, sub) : b.c;
+    const h = i === bi ? Math.max(o, c) : (b.hi ?? c), l = i === bi ? Math.min(o, c) : (b.lo ?? c);
+    const up = c >= o; cx.strokeStyle = cx.fillStyle = up ? css("--buy") : css("--sell");
+    cx.beginPath(); cx.moveTo(X(i), Y(h)); cx.lineTo(X(i), Y(l)); cx.lineWidth = 1; cx.stroke();
+    const top = Y(Math.max(o, c)), hgt = Math.max(1, Math.abs(Y(o) - Y(c)));
+    cx.fillRect(X(i) - Math.max(1, bw * 0.35), top, Math.max(2, bw * 0.7), hgt);
+  }
+  // trade markers with labels
+  cx.font = "700 12px JetBrains Mono";
+  for (const t of fills) { if (t.at < s || t.at > bi) continue;
+    const x = X(t.at), y = Y(t.price), buy = t.side === "buy";
     cx.fillStyle = buy ? css("--buy") : css("--sell"); cx.beginPath();
-    if (buy) { cx.moveTo(x, y + 4); cx.lineTo(x - 6, y + 14); cx.lineTo(x + 6, y + 14); } else { cx.moveTo(x, y - 4); cx.lineTo(x - 6, y - 14); cx.lineTo(x + 6, y - 14); }
+    if (buy) { cx.moveTo(x, y + 6); cx.lineTo(x - 8, y + 20); cx.lineTo(x + 8, y + 20); }
+    else { cx.moveTo(x, y - 6); cx.lineTo(x - 8, y - 20); cx.lineTo(x + 8, y - 20); }
     cx.fill();
-    if (!buy && t.ret != null) { cx.font = "600 11px JetBrains Mono"; cx.fillText((t.ret >= 0 ? "+" : "") + (t.ret * 100).toFixed(1) + "%", x + 8, y - 8); } }
-  const cb = bars[bi]; cx.fillStyle = css("--price"); cx.beginPath(); cx.arc(X(bi), Y(cb.c), 3.5, 0, 7); cx.fill();
-  cx.font = "600 12px JetBrains Mono"; cx.fillStyle = css("--muted"); cx.fillText(`${ep.symbol}  $${fmt(cb.c)}`, 10, 16);
+    const label = buy ? `BUY $${fmt(t.price)}` : `SELL ${(t.ret >= 0 ? "+" : "") + (t.ret * 100).toFixed(1)}%`;
+    const tw = cx.measureText(label).width, lx = Math.min(Math.max(x - tw / 2, 4), W - tw - 4);
+    cx.fillText(label, lx, Math.min(Math.max(buy ? y + 36 : y - 26, 34), H - 6));
+  }
+  // live price + open position line
+  const now = priceAt(bi, sub), open = position(bi);
+  if (open) {
+    const ret = netRet(open.price, now);
+    cx.setLineDash([4, 4]); cx.strokeStyle = css("--muted"); cx.beginPath(); cx.moveTo(X(Math.max(open.at, s)), Y(open.price)); cx.lineTo(W, Y(open.price)); cx.stroke(); cx.setLineDash([]);
+    cx.font = "800 15px JetBrains Mono"; cx.fillStyle = ret >= 0 ? css("--buy") : css("--sell");
+    cx.fillText(`${ret >= 0 ? "+" : ""}${(ret * 100).toFixed(1)}%`, Math.min(X(bi) + 10, W - 70), Y(now) + 5);
+  }
+  cx.font = "600 13px JetBrains Mono"; cx.fillStyle = css("--fg"); cx.fillText(`${ep.symbol}  $${fmt(now)}`, 10, 18);
+}
+
+function drawPosition(bi, sub) {
+  const el = document.getElementById("position"), pnl = clipPnl(bi, sub);
+  if (pnl.open) {
+    const c = pnl.live >= 0 ? "--buy" : "--sell";
+    el.innerHTML = `<div class="what">🪰 <b>HOLDING ${esc(ep.symbol)}</b><br>bought $${fmt(pnl.open.price)} · now $${fmt(priceAt(bi, sub))}<br>${money(pnl.stake)} → <b>${money(pnl.balance)}</b></div>
+      <div class="pct" style="color:var(${c})">${pnl.live >= 0 ? "+" : ""}${(pnl.live * 100).toFixed(1)}%</div>`;
+  } else {
+    const lastSell = [...fills].reverse().find(t => t.side === "sell" && t.at <= bi && t.at >= START);
+    el.innerHTML = `<div class="what">🪰 <b>WATCHING</b><br>${lastSell ? `last trade ${(lastSell.ret >= 0 ? "+" : "") + (lastSell.ret * 100).toFixed(1)}%` : "not in a trade"}</div>
+      <div class="pct" style="color:var(--muted)">—</div>`;
+  }
+  const gain = pnl.balance - BANK;
+  stats.innerHTML = [[`BALANCE (started ${money(BANK).replace(".00", "")})`, money(pnl.balance), gain >= 0 ? "--buy" : "--sell"],
+    ["PnL", (gain >= 0 ? "+" : "−") + money(Math.abs(gain)), gain >= 0 ? "--buy" : "--sell"],
+    ["BEATS HUMANS (24h)", ep.compare_value, "--mn9"]]
+    .map(([k, v, c]) => `<div class="stat"><div class="k">${k}</div><div class="v" style="${c ? `color:var(${c})` : ""}">${esc(v)}</div></div>`).join("");
 }
 const fmt = p => p >= 1 ? p.toFixed(3) : p.toPrecision(4);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -246,22 +312,22 @@ function enterBar(i) {
   for (const mt of meters) { const v = m[mt.k]; const w = mt.k === "valence" ? Math.abs(v) * 50 + "%" : Math.min(100, v / mt.max * 100) + "%";
     mt.fill.style.width = w; mt.fill.style.marginLeft = mt.k === "valence" ? (v < 0 ? 50 - Math.abs(v) * 50 : 50) + "%" : 0;
     mt.val.textContent = mt.unit ? Math.round(v) + mt.unit : (v >= 0 && mt.k === "valence" ? "+" : "") + v.toFixed(2); }
-  const done = trades.filter(t => t.side === "sell" && t.i <= i);
-  const pnl = done.reduce((a, t) => a + t.pnl, 0), wins = done.filter(t => t.ret > 0).length;
-  stats.innerHTML = [["FLY PnL", (pnl >= 0 ? "+$" : "-$") + Math.abs(pnl).toFixed(2), pnl >= 0 ? "--buy" : "--sell"],
-    ["TRADES", `${done.length} · ${done.length ? Math.round(wins / done.length * 100) : 0}% win`, ""],
-    [ep.compare_label, ep.compare_value, "--mn9"]]
-    .map(([k, v, c]) => `<div class="stat"><div class="k">${k}</div><div class="v" style="${c ? `color:var(${c})` : ""}">${esc(v)}</div></div>`).join("");
   document.getElementById("clock").textContent = `${b.t} UTC · ${b.r}`;
 }
 
 function showEnd(on) {
   const el = document.getElementById("endcard"), st = ep.stats || {};
-  if (on && !el.innerHTML) el.innerHTML = `<div><h2>🪰 1 fruit fly brain vs ${(st.humans || 0).toLocaleString()} humans</h2>
-    <div class="big">fly: <b style="color:var(${st.fly_roi >= 0 ? "--buy" : "--sell"})">${(st.fly_roi >= 0 ? "+" : "") + (st.fly_roi * 100).toFixed(1)}%</b>
-    &nbsp;·&nbsp; median human: <b style="color:var(--sell)">${(st.human_median_roi * 100).toFixed(1)}%</b><br>
-    the fly beat <b style="color:var(--mn9)">${Math.round(st.beat_humans * 100)}%</b> of human traders</div>
-    <small>${esc(ep.subtitle)} · paper trading, fees included · return on capital deployed</small></div>`;
+  if (on && !el.innerHTML) {
+    const firstBuy = fills.find(t => t.side === "buy" && t.at >= START && t.at <= END);
+    const clip = clipPnl(END, 1);
+    const held = firstBuy ? netRet(firstBuy.price, bars[END].c) : null;
+    const pct = (x, c) => `<b style="color:var(${c ?? (x >= 0 ? "--buy" : "--sell")})">${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%</b>`;
+    el.innerHTML = `<div><h2>🪰 fly: ${money(BANK).replace(".00", "")} → ${money(clip.balance)} (${pct(clip.ret)})</h2>
+      ${held != null ? `<div class="big">a human who bought when the fly did and held: ${pct(held)}</div>` : ""}
+      <div class="big" style="font-size:22px;margin-top:18px">over the whole day the fly beat <b style="color:var(--mn9)">${Math.round(st.beat_humans * 100)}%</b>
+      of ${(st.humans || 0).toLocaleString()} human traders</div>
+      <small>${esc(ep.subtitle)} · paper trading, fees included</small></div>`;
+  }
   el.style.opacity = on ? 1 : 0;
 }
 
@@ -278,6 +344,7 @@ function step() {
   }
   actAttr.needsUpdate = true;
   drawChart(barIdx, sub / FRAMES_PER_BAR);
+  drawPosition(barIdx, sub / FRAMES_PER_BAR);
   if (caption.t > 0 && --caption.t === 0) document.getElementById("caption").style.opacity = 0;
   gframe++;
   sub++; if (sub >= FRAMES_PER_BAR) { sub = 0; if (!REC || barIdx < END) barIdx = barIdx >= END ? 0 : barIdx + 1; else sub = FRAMES_PER_BAR - 1; }

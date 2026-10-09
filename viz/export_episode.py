@@ -73,7 +73,8 @@ def main():
                            "pnl": (x["usd"] - ses.paper.size) if x["side"] == "sell" else 0})
             n_tr += 1
         th = ses.decide(t, bar.close, f.loc[t].to_dict())
-        rows.append({"t": f"{t:%m-%d %H:%M}", "c": bar.close, "k": ",".join(map(str, th.key)),
+        rows.append({"t": f"{t:%m-%d %H:%M}", "o": bar.open, "hi": bar.high, "lo": bar.low, "c": bar.close,
+                     "k": ",".join(map(str, th.key)),
                      "s": round(th.senses.sugar_hz), "b": round(th.senses.bitter_hz), "l": round(th.senses.loom_hz),
                      "m": round(th.mn9_hz), "g": round(th.gf_hz), "v": round(th.valence, 3), "h": round(th.hunger, 3),
                      "p": int(ses.paper.in_position), "r": th.reason})
@@ -103,7 +104,7 @@ def main():
     fly_roi = p.cash / p.spent if p.spent else 0.0
     beat = float((hu.roi < fly_roi).mean()) if len(hu) else 0.0
     ep = {
-        "symbol": a.symbol,
+        "symbol": a.symbol, "fee": a.fee, "size": ses.paper.size,
         "subtitle": (f"FlyWire connectome · 138,639 neurons · {a.symbol} · {len(df):,} real swaps via Helius"
                      if not a.demo else "FlyWire connectome · 138,639 neurons · synthetic market (fake data)"),
         "bars": rows, "trades": trades, "kc": kc_rows, "sim_frames": offsets,

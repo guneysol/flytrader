@@ -22,8 +22,9 @@ python viz/export_episode.py --mint $MINT --symbol '$TRUMP' --train-from $LEARN 
 python -m flytrader study --mint $MINT --name TRUMP_launch --hours 28 --end $END \
   --fee 0.01 --window 4 --burn-in 4 --tastes auto --lesions --seeds 3
 
-# 3) the video: the MELANIA crash, 2025-01-19 20:35-22:15 UTC (needs the viewer server running:
+# 3) the video: buy at $65, giant-fiber exit at $75, MELANIA crash, 2025-01-19 19:40-21:32 UTC
+#    (needs the viewer server running:
 #    python -m http.server 8765 --directory viz)
 if command -v ffmpeg >/dev/null && curl -s localhost:8765 >/dev/null; then
-  python viz/record.py --episode trump_launch --from-bar 755 --bars 100 --fpb 10 --hold 5 --out out/trump_launch.mp4
+  python viz/record.py --episode trump_launch --from-bar 700 --bars 113 --fpb 10 --hold 6 --out out/trump_launch.mp4
 fi
