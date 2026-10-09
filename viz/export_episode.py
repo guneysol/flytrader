@@ -105,6 +105,7 @@ def main():
     beat = float((hu.roi < fly_roi).mean()) if len(hu) else 0.0
     ep = {
         "symbol": a.symbol, "fee": a.fee, "size": ses.paper.size,
+        "start": int(start), "end": int(df.ts.max()) + 1,
         "subtitle": (f"FlyWire connectome · 138,639 neurons · {a.symbol} · {len(df):,} real swaps via Helius"
                      if not a.demo else "FlyWire connectome · 138,639 neurons · synthetic market (fake data)"),
         "bars": rows, "trades": trades, "kc": kc_rows, "sim_frames": offsets,

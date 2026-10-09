@@ -39,6 +39,9 @@
   .label { position:absolute; font-size:11px; font-weight:600; pointer-events:none; white-space:nowrap; transform:translate(10px,-50%);
            padding:2px 6px; border-radius:6px; background:rgba(5,6,10,.55); transition:opacity .2s; }
   #endcard { position:absolute; inset:0; display:grid; place-items:center; background:rgba(5,6,10,.82); opacity:0; transition:opacity .6s; pointer-events:none; text-align:center; }
+  #endcard .board { display:grid; grid-template-columns:auto auto; gap:8px 28px; justify-content:center; align-items:baseline;
+                    font-size:22px; margin:22px auto 12px; text-align:left; }
+  #endcard .board b { font-size:30px; text-align:right; font-variant-numeric:tabular-nums; }
   #endcard h2 { font-size:44px; margin:0 0 18px; } #endcard .big { font-size:30px; line-height:1.6; } #endcard small { display:block; color:var(--muted); font-size:14px; margin-top:22px; }
   #loading { position:fixed; inset:0; display:grid; place-items:center; color:var(--muted); font-size:14px; background:var(--bg); z-index:9; }
   #controls { position:absolute; right:12px; top:14px; display:flex; gap:6px; }
@@ -318,15 +321,19 @@ function enterBar(i) {
 function showEnd(on) {
   const el = document.getElementById("endcard"), st = ep.stats || {};
   if (on && !el.innerHTML) {
-    const firstBuy = fills.find(t => t.side === "buy" && t.at >= START && t.at <= END);
-    const clip = clipPnl(END, 1);
-    const held = firstBuy ? netRet(firstBuy.price, bars[END].c) : null;
+    const clip = clipPnl(END, 1), cs = (ep.clips || {})[`${START}-${END}`];
     const pct = (x, c) => `<b style="color:var(${c ?? (x >= 0 ? "--buy" : "--sell")})">${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%</b>`;
-    el.innerHTML = `<div><h2>🪰 fly: ${money(BANK).replace(".00", "")} → ${money(clip.balance)} (${pct(clip.ret)})</h2>
-      ${held != null ? `<div class="big">a human who bought when the fly did and held: ${pct(held)}</div>` : ""}
-      <div class="big" style="font-size:22px;margin-top:18px">over the whole day the fly beat <b style="color:var(--mn9)">${Math.round(st.beat_humans * 100)}%</b>
-      of ${(st.humans || 0).toLocaleString()} human traders</div>
-      <small>${esc(ep.subtitle)} · paper trading, fees included</small></div>`;
+    // compare like with like: real wallets that bought during this clip vs the fly, both to the end of the day
+    const fair = cs ? `<div class="board">
+        <span>${cs.buyers.toLocaleString()} real traders who bought during this clip</span><b style="color:var(--sell)">${(cs.buyers_median_roi * 100).toFixed(1)}%</b>
+        <span>🪰 the fly, same hours</span><b style="color:var(${cs.fly_roi >= 0 ? "--buy" : "--sell"})">${(cs.fly_roi >= 0 ? "+" : "") + (cs.fly_roi * 100).toFixed(1)}%</b>
+      </div>
+      <div class="big" style="font-size:22px">returns to end of day · the fly did better than <b style="color:var(--mn9)">${Math.round(cs.fly_beats * 100)}%</b> of them</div>` : "";
+    el.innerHTML = `<div><h2>🪰 this trade: ${money(BANK).replace(".00", "")} → ${money(clip.balance)} (${pct(clip.ret)})</h2>
+      ${fair}
+      <div class="big" style="font-size:18px;margin-top:14px;color:var(--muted)">whole day: beat <b style="color:var(--mn9)">${Math.round(st.beat_humans * 100)}%</b>
+      of ${(st.humans || 0).toLocaleString()} traders</div>
+      <small>${esc(ep.subtitle)} · paper trading, fees included · returns = PnL / capital spent</small></div>`;
   }
   el.style.opacity = on ? 1 : 0;
 }

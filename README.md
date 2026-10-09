@@ -146,7 +146,7 @@ Read this honestly:
 | **Price** | SOL legs are valued with 1-minute SOL/USD candles from Binance (Coinbase as fallback). Prints more than 2× away from the trailing median are dropped. The bar price is a trailing median of the last 15 fills, because single fills carry slippage, sandwiches and tips. |
 | **Fills** | In backtests the fly decides at a bar's close and is filled at the **next** bar's open, plus fees; tests check there is no lookahead. In `live` mode it fills at the latest swap price. |
 | **Humans** | Every wallet that spent ≥$20 in the window. ROI = (realized + open bag marked at the last price, net of exit fees) / spent. Sells of tokens bought *before* the window are ignored. Wallets that look like bots (machine-gun cadence, >40 trades/h, or heavy churn for ~0 edge) are excluded. |
-| **Fly ROI** | PnL / capital deployed, $100 per entry. This is the same metric as for the humans. The video instead shows a $1,000 balance going all-in on each trade (compounding, set with `?bank=`), which is the same per-trade returns shown as a balance. |
+| **Fly ROI** | PnL / capital deployed, $100 per entry. This is the same metric as for the humans. The video instead shows a $1,000 balance going all-in on each trade (compounding, set with `?bank=`), which is the same per-trade returns shown as a balance. Its end card compares the fly with the real wallets that bought during the clip, both measured to the end of the day (`viz/clip_stats.py`). |
 
 ## Limitations
 

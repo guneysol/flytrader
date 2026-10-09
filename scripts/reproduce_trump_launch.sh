@@ -26,5 +26,6 @@ python -m flytrader study --mint $MINT --name TRUMP_launch --hours 28 --end $END
 #    (needs the viewer server running:
 #    python -m http.server 8765 --directory viz)
 if command -v ffmpeg >/dev/null && curl -s localhost:8765 >/dev/null; then
+  python viz/clip_stats.py --episode trump_launch --mint $MINT --from-bar 700 --to-bar 812
   python viz/record.py --episode trump_launch --from-bar 700 --bars 113 --fpb 10 --hold 6 --out out/trump_launch.mp4
 fi
